@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { Link } from "wouter";
 import { PayPalCheckout } from "@/components/PayPalCheckout";
+import { SEOHead, seoPages } from "@/components/SEOHead";
 
 import { stripePromise } from "@/lib/stripe";
 
@@ -160,5 +161,6 @@ export default function Checkout() {
         </div>
       </div>
     </div>
+    </>
   );
 }

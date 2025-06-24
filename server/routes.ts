@@ -8,6 +8,7 @@ import { securityToolsService } from "./services/security-tools.js";
 import { insertChatMessageSchema, insertToolUsageSchema, insertUserSchema } from "@shared/schema.js";
 import { v4 as uuidv4 } from "uuid";
 import rateLimit from "express-rate-limit";
+import { registerSEORoutes } from "./seo.js";
 
 let stripe: Stripe | null = null;
 
@@ -64,6 +65,8 @@ async function getOrCreateUser(req: any): Promise<any> {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Register SEO routes first
+  registerSEORoutes(app);
   
   // Create payment intent for consultation
   app.post("/api/create-payment-intent", async (req, res) => {

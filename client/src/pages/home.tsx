@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Shield, Brain, Clock, DollarSign, Wrench, MessageSquare } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { SEOHead, seoPages } from "@/components/SEOHead";
 
 export default function Home() {
   const { data: stats } = useQuery({
@@ -13,8 +14,10 @@ export default function Home() {
   });
 
   return (
-    <div className="min-h-screen bg-cyber-dark text-cyber-text">
-      <Navigation />
+    <>
+      <SEOHead {...seoPages.home} />
+      <div className="min-h-screen bg-cyber-dark text-cyber-text">
+        <Navigation />
       
       {/* Hero Section */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -276,6 +279,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </>
   );
 }

@@ -2,10 +2,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { SEOHead, seoPages } from "@/components/SEOHead";
 
 export default function Terms() {
   return (
-    <div className="min-h-screen bg-cyber-dark text-cyber-text">
+    <>
+      <SEOHead {...seoPages.terms} />
+      <div className="min-h-screen bg-cyber-dark text-cyber-text">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <Link href="/">
@@ -156,5 +159,6 @@ export default function Terms() {
         </Card>
       </div>
     </div>
+    </>
   );
 }
