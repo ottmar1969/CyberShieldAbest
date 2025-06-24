@@ -66,6 +66,7 @@
     @apply font-sans antialiased;
     background-color: var(--cyber-dark);
     color: var(--cyber-text);
+    line-height: 1.6;
   }
 
   /* Custom cyber theme utilities */
@@ -160,5 +161,28 @@
 
   .animate-typing {
     animation: typing 1.5s infinite;
+  }
+
+  /* Improved text readability */
+  .text-readable {
+    font-size: 1.1rem;
+    line-height: 1.7;
+    letter-spacing: 0.025em;
+  }
+
+  .text-readable-small {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+  }
+
+  /* Better contrast for readability */
+  .bg-readable-card {
+    background-color: hsl(210, 24%, 18%);
+    border-color: hsl(217, 19%, 30%);
+  }
+
+  .text-high-contrast {
+    color: hsl(210, 40%, 95%);
   }
 }

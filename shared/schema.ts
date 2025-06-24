@@ -4,12 +4,14 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  email: text("email").notNull().unique(),
-  password: text("password").notNull(),
-  credits: numeric("credits", { precision: 10, scale: 2 }).notNull().default("0.00"),
+  sessionId: text("session_id").notNull().unique(), // Anonymous session-based identification
+  ipAddress: text("ip_address"),
+  fingerprint: text("fingerprint"), // Browser fingerprint for security
+  credits: numeric("credits", { precision: 10, scale: 2 }).notNull().default("5.00"), // Start with 1 free question
+  hasUsedFreeQuestion: boolean("has_used_free_question").notNull().default(false),
   stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastActivity: timestamp("last_activity").notNull().defaultNow(),
 });
 
 export const chatSessions = pgTable("chat_sessions", {
@@ -40,9 +42,9 @@ export const toolUsage = pgTable("tool_usage", {
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  email: true,
-  password: true,
+  sessionId: true,
+  ipAddress: true,
+  fingerprint: true,
 });
 
 export const insertChatSessionSchema = createInsertSchema(chatSessions).pick({

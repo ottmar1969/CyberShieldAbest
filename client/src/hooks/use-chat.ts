@@ -7,6 +7,7 @@ interface ChatResponse {
   citations?: string[];
   sessionId: string;
   metadata?: any;
+  remainingCredits?: string;
 }
 
 export function useChat() {
@@ -14,14 +15,20 @@ export function useChat() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const sendMessage = async (question: string): Promise<ChatResponse> => {
+  const sendMessage = async (question: string, fingerprint?: string): Promise<ChatResponse> => {
     setIsLoading(true);
     
     try {
       const response = await apiRequest("POST", "/api/consultation", {
         question,
         sessionId: currentSessionId,
+        fingerprint,
       });
+
+      if (response.status === 402) {
+        const errorData = await response.json();
+        throw new Error(`402: ${errorData.message}`);
+      }
 
       const data = await response.json();
       
@@ -30,9 +37,13 @@ export function useChat() {
       }
 
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message?.includes("402")) {
+        throw error; // Re-throw credit errors
+      }
+      
       toast({
-        title: "Error",
+        title: "Error", 
         description: "Failed to send message. Please try again.",
         variant: "destructive",
       });

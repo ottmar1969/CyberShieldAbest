@@ -5,8 +5,9 @@ import { storage } from "./storage.js";
 import { perplexityService } from "./services/perplexity.js";
 import { openaiService } from "./services/openai.js";
 import { securityToolsService } from "./services/security-tools.js";
-import { insertChatMessageSchema, insertToolUsageSchema } from "@shared/schema.js";
+import { insertChatMessageSchema, insertToolUsageSchema, insertUserSchema } from "@shared/schema.js";
 import { v4 as uuidv4 } from "uuid";
+import rateLimit from "express-rate-limit";
 
 let stripe: Stripe | null = null;
 
@@ -16,6 +17,50 @@ if (process.env.STRIPE_SECRET_KEY) {
   });
 } else {
   console.warn("STRIPE_SECRET_KEY not found - Stripe payment features will be unavailable");
+}
+
+// Rate limiting for security
+const consultationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 consultations per windowMs
+  message: "Too many consultation requests, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const toolsLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 50, // limit each IP to 50 tool uses per windowMs
+  message: "Too many tool requests, please try again later",
+});
+
+// Helper function to get or create user based on session/fingerprint
+async function getOrCreateUser(req: any): Promise<any> {
+  const sessionId = req.sessionID || uuidv4();
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  const fingerprint = req.body.fingerprint || req.headers['x-fingerprint'];
+
+  // Try to find existing user by session
+  let user = await storage.getUserBySessionId(sessionId);
+  
+  // If not found and we have fingerprint, try to find by fingerprint
+  if (!user && fingerprint) {
+    user = await storage.getUserByFingerprint(fingerprint, ipAddress);
+  }
+  
+  // Create new user if not found
+  if (!user) {
+    user = await storage.createUser({
+      sessionId,
+      ipAddress,
+      fingerprint,
+    });
+  } else {
+    // Update last activity
+    await storage.updateUserActivity(user.id);
+  }
+  
+  return user;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -41,8 +86,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // AI Consultation endpoint
-  app.post("/api/consultation", async (req, res) => {
+  // User profile endpoint
+  app.get("/api/user/profile", async (req, res) => {
+    try {
+      const user = await getOrCreateUser(req);
+      res.json({
+        id: user.id,
+        credits: user.credits,
+        hasUsedFreeQuestion: user.hasUsedFreeQuestion,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Error fetching user profile: " + error.message });
+    }
+  });
+
+  // AI Consultation endpoint with credit system
+  app.post("/api/consultation", consultationLimiter, async (req, res) => {
     try {
       const { question, sessionId } = req.body;
       
@@ -50,11 +109,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Question is required" });
       }
 
+      // Get or create user
+      const user = await getOrCreateUser(req);
+      
+      // Check if user has enough credits
+      const questionCost = 5.00;
+      const userCredits = parseFloat(user.credits);
+      
+      if (userCredits < questionCost) {
+        return res.status(402).json({ 
+          message: "Insufficient credits. Please purchase more credits to continue.",
+          requiredCredits: questionCost,
+          userCredits: userCredits
+        });
+      }
+
+      // Deduct credits
+      const newCredits = (userCredits - questionCost).toFixed(2);
+      await storage.updateUserCredits(user.id, newCredits);
+      
+      // Mark free question as used if this was the first question
+      if (!user.hasUsedFreeQuestion) {
+        await storage.updateFreeQuestionUsed(user.id);
+      }
+
       // Create or get chat session
       let session = await storage.getChatSession(sessionId || uuidv4());
       if (!session) {
         session = await storage.createChatSession({
-          userId: null, // For now, no user authentication
+          userId: user.id,
           sessionId: sessionId || uuidv4(),
         });
       }
@@ -62,10 +145,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save user question
       await storage.createChatMessage({
         sessionId: session.id,
-        userId: null,
+        userId: user.id,
         role: "user",
         content: question,
-        cost: "2.00",
+        cost: questionCost.toString(),
         metadata: null,
       });
 
@@ -92,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save AI response
       await storage.createChatMessage({
         sessionId: session.id,
-        userId: null,
+        userId: user.id,
         role: "assistant",
         content: finalResponse.content,
         cost: null,
@@ -104,6 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         citations: finalResponse.citations,
         sessionId: session.sessionId,
         metadata: finalResponse.metadata,
+        remainingCredits: newCredits,
       });
 
     } catch (error: any) {
@@ -132,7 +216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Security Tools Endpoints
 
   // Password Strength Analyzer
-  app.post("/api/tools/password-strength", async (req, res) => {
+  app.post("/api/tools/password-strength", toolsLimiter, async (req, res) => {
     try {
       const { password } = req.body;
       
@@ -142,9 +226,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const analysis = await securityToolsService.analyzePasswordStrength(password);
       
+      // Get user for logging
+      const user = await getOrCreateUser(req);
+      
       // Log tool usage (without storing the actual password)
       await storage.createToolUsage({
-        userId: null,
+        userId: user.id,
         toolName: "password-strength",
         input: "password_provided",
         result: analysis,
@@ -157,7 +244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Website Security Scanner
-  app.post("/api/tools/website-security", async (req, res) => {
+  app.post("/api/tools/website-security", toolsLimiter, async (req, res) => {
     try {
       const { url } = req.body;
       
@@ -167,8 +254,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const analysis = await securityToolsService.scanWebsiteSecurity(url);
       
+      const user = await getOrCreateUser(req);
+      
       await storage.createToolUsage({
-        userId: null,
+        userId: user.id,
         toolName: "website-security",
         input: url,
         result: analysis,
@@ -181,7 +270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // SSL Certificate Checker
-  app.post("/api/tools/ssl-check", async (req, res) => {
+  app.post("/api/tools/ssl-check", toolsLimiter, async (req, res) => {
     try {
       const { domain } = req.body;
       
@@ -191,8 +280,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const analysis = await securityToolsService.checkSSLCertificate(domain);
       
+      const user = await getOrCreateUser(req);
+      
       await storage.createToolUsage({
-        userId: null,
+        userId: user.id,
         toolName: "ssl-check",
         input: domain,
         result: analysis,
@@ -205,7 +296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Phishing URL Detector
-  app.post("/api/tools/phishing-detector", async (req, res) => {
+  app.post("/api/tools/phishing-detector", toolsLimiter, async (req, res) => {
     try {
       const { url } = req.body;
       
@@ -215,8 +306,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const analysis = await securityToolsService.detectPhishingURL(url);
       
+      const user = await getOrCreateUser(req);
+      
       await storage.createToolUsage({
-        userId: null,
+        userId: user.id,
         toolName: "phishing-detector",
         input: url,
         result: analysis,
@@ -229,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Security Headers Analyzer
-  app.post("/api/tools/security-headers", async (req, res) => {
+  app.post("/api/tools/security-headers", toolsLimiter, async (req, res) => {
     try {
       const { url } = req.body;
       
@@ -239,8 +332,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const analysis = await securityToolsService.analyzeSecurityHeaders(url);
       
+      const user = await getOrCreateUser(req);
+      
       await storage.createToolUsage({
-        userId: null,
+        userId: user.id,
         toolName: "security-headers",
         input: url,
         result: analysis,

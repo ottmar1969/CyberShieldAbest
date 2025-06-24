@@ -1,12 +1,14 @@
 import { users, chatSessions, chatMessages, toolUsage, type User, type InsertUser, type ChatSession, type InsertChatSession, type ChatMessage, type InsertChatMessage, type ToolUsage, type InsertToolUsage } from "@shared/schema";
 
 export interface IStorage {
-  // User management
+  // User management (session-based)
   getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserBySessionId(sessionId: string): Promise<User | undefined>;
+  getUserByFingerprint(fingerprint: string, ipAddress: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserCredits(userId: number, credits: string): Promise<User>;
+  updateUserActivity(userId: number): Promise<User>;
+  updateFreeQuestionUsed(userId: number): Promise<User>;
   updateStripeCustomerId(userId: number, stripeCustomerId: string): Promise<User>;
   
   // Chat sessions
@@ -44,22 +46,28 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
+  async getUserBySessionId(sessionId: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.sessionId === sessionId);
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.email === email);
+  async getUserByFingerprint(fingerprint: string, ipAddress: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => 
+      user.fingerprint === fingerprint && user.ipAddress === ipAddress
+    );
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userIdCounter++;
     const user: User = {
-      ...insertUser,
       id,
-      credits: "0.00",
+      sessionId: insertUser.sessionId,
+      ipAddress: insertUser.ipAddress || null,
+      fingerprint: insertUser.fingerprint || null,
+      credits: "5.00", // Start with 1 free question ($5 credit)
+      hasUsedFreeQuestion: false,
       stripeCustomerId: null,
       createdAt: new Date(),
+      lastActivity: new Date(),
     };
     this.users.set(id, user);
     return user;
@@ -70,6 +78,24 @@ export class MemStorage implements IStorage {
     if (!user) throw new Error("User not found");
     
     const updatedUser = { ...user, credits };
+    this.users.set(userId, updatedUser);
+    return updatedUser;
+  }
+
+  async updateUserActivity(userId: number): Promise<User> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("User not found");
+    
+    const updatedUser = { ...user, lastActivity: new Date() };
+    this.users.set(userId, updatedUser);
+    return updatedUser;
+  }
+
+  async updateFreeQuestionUsed(userId: number): Promise<User> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("User not found");
+    
+    const updatedUser = { ...user, hasUsedFreeQuestion: true };
     this.users.set(userId, updatedUser);
     return updatedUser;
   }

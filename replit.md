@@ -130,4 +130,11 @@ Changelog:
 
 ```
 Preferred communication style: Simple, everyday language.
+Company: CyberGuard AI
+Operator: O. Francisca  
+Website: CyberGuardAI.site
+Contact: WhatsApp +31 628073996
+Pricing: $5 per consultation (1 FREE for new users)
+Security: Anonymous session-based system with IP and fingerprint tracking
+Payment: Stripe + PayPal integration
 ```

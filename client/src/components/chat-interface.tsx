@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Send, Bot, User, Search, Info } from "lucide-react";
 import { useChat } from "@/hooks/use-chat";
+import { useFingerprint } from "@/hooks/useFingerprint";
+import { useToast } from "@/hooks/use-toast";
+import { CreditSystem } from "@/components/CreditSystem";
 import { Link } from "wouter";
 
 interface Message {
@@ -22,12 +25,15 @@ export function ChatInterface() {
     {
       id: "welcome",
       role: "assistant",
-      content: "Welcome! I'm your AI cybersecurity consultant. Ask me anything about:\n\n• Threat analysis and vulnerability assessment\n• Security architecture and best practices\n• Incident response and forensics\n• Compliance and regulatory requirements\n• Security tools and technologies",
+      content: "Welcome! I'm your AI cybersecurity consultant. Ask me anything about:\n\n• Threat analysis and vulnerability assessment\n• Security architecture and best practices\n• Incident response and forensics\n• Compliance and regulatory requirements\n• Security tools and technologies\n\nNew users get 1 FREE consultation question!",
       timestamp: new Date(),
     }
   ]);
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { sendMessage, isLoading } = useChat();
+  const fingerprint = useFingerprint();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -50,7 +56,7 @@ export function ChatInterface() {
     setInput("");
 
     try {
-      const response = await sendMessage(input);
+      const response = await sendMessage(input, fingerprint);
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -62,15 +68,31 @@ export function ChatInterface() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "I apologize, but I encountered an error processing your question. Please try again.",
-        timestamp: new Date(),
-      };
+      
+      if (response.remainingCredits !== undefined) {
+        toast({
+          title: "Consultation Complete",
+          description: `Remaining credits: $${response.remainingCredits}`,
+        });
+      }
+    } catch (error: any) {
+      if (error.message?.includes("402") || error.message?.includes("Insufficient credits")) {
+        setShowCreditDialog(true);
+        toast({
+          title: "Insufficient Credits",
+          description: "Please purchase more credits to continue consultations.",
+          variant: "destructive",
+        });
+      } else {
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "I apologize, but I encountered an error processing your question. Please try again.",
+          timestamp: new Date(),
+        };
 
-      setMessages(prev => [...prev, errorMessage]);
+        setMessages(prev => [...prev, errorMessage]);
+      }
     }
   };
 
@@ -161,20 +183,26 @@ export function ChatInterface() {
               className="flex-1 bg-cyber-dark border-cyber-border focus:border-cyber-cyan focus:ring-cyber-cyan"
               disabled={isLoading}
             />
-            <Link href="/checkout">
-              <Button
-                type="button"
-                className="bg-cyber-cyan text-cyber-dark hover:bg-cyber-green transition-colors flex items-center"
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Send ($2)
-              </Button>
-            </Link>
+            <Button
+              type="submit"
+              disabled={isLoading || !input.trim()}
+              className="bg-cyber-cyan text-cyber-dark hover:bg-cyber-green transition-colors flex items-center"
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {isLoading ? "Sending..." : "Send ($5)"}
+            </Button>
           </form>
-          <p className="text-xs text-cyber-text-dim mt-2 flex items-center">
+          <p className="text-xs text-cyber-text-dim mt-2 flex items-center text-readable-small">
             <Info className="mr-1 h-3 w-3" />
-            Each question costs $2. Powered by advanced AI and real-time threat intelligence.
+            Each question costs $5. New users get 1 FREE question. Powered by advanced AI and real-time threat intelligence.
           </p>
+          
+          {showCreditDialog && (
+            <div className="mt-4 p-4 bg-cyber-border/20 rounded-lg">
+              <p className="text-sm text-cyber-text mb-3">You need more credits to continue consultations.</p>
+              <CreditSystem onCreditsUpdate={() => setShowCreditDialog(false)} />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

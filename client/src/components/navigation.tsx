@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Shield, History, Wallet } from "lucide-react";
 import { Link } from "wouter";
+import { CreditSystem } from "@/components/CreditSystem";
 
 export function Navigation() {
   return (
@@ -28,12 +29,7 @@ export function Navigation() {
               History
             </Button>
             
-            <Link href="/checkout">
-              <Button className="bg-cyber-cyan text-cyber-dark hover:bg-cyber-green transition-colors">
-                <Wallet className="mr-2 h-4 w-4" />
-                Credits: $10.00
-              </Button>
-            </Link>
+            <CreditSystem />
           </div>
         </div>
       </div>
